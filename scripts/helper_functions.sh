@@ -158,3 +158,82 @@ gcm_write_metric() {
       ]
     }"
 }
+
+# first parameter is slack channel name to send the status to
+# second parameter is slack webhook url
+# third parameter is message body
+# fourth parameter is message header for success
+# fifth parameter is message header for failure
+# sixth parameter is message header for canceled job
+send_slack_status() {
+    local message_header_canceled
+    local message_header_failed
+    local message_header_success
+    local slack_msg_header
+    local slack_msg_body
+
+   if [ -z "${6}" ]; then
+   message_header_canceled=":white_check_mark: ${TARGET} for ${ENVIRONMENT} environment succeeded"
+   else
+   message_header_canceled=$6
+   fi
+
+   if [ -z "${5}" ]; then
+   message_header_failed=":x: ${TARGET} for ${ENVIRONMENT} environment failed"
+   else
+   message_header_failed=$5
+   fi
+
+   if [ -z "${4}" ]; then
+   message_header_success=":white_check_mark: ${TARGET} for ${ENVIRONMENT} environment succeeded"
+   else
+   message_header_success=$4
+   fi
+
+    # canceled status is not currently (gitlab 13.7) handled in after_script phase, but support is planned in some future release, so this if should start working once the support is added
+    if [[ "${CI_JOB_STATUS}" == "canceled" ]]; then
+    	slack_msg_header=${message_header_canceled}
+    elif [[ "${CI_JOB_STATUS}" == "failed" ]]; then
+    	slack_msg_header=${message_header_failed}
+    else
+        slack_msg_header=${message_header_success}
+    fi
+
+    # Populate slack message body
+    if [ -z "${3}" ]; then
+    slack_msg_body="<${CI_JOB_URL}|Job URL> by ${GITLAB_USER_NAME} ${CI_COMMIT_TITLE}"
+    else
+    slack_msg_body=$3
+    fi
+
+    payload=$(cat <<SLACK
+            {
+                "channel": "$1",
+                "blocks": [
+                  {
+                          "type": "section",
+                          "text": {
+                                  "type": "mrkdwn",
+                                  "text": "${slack_msg_header}"
+                          }
+                  },
+                  {
+                          "type": "divider"
+                  },
+                  {
+                          "type": "section",
+		                  "text": {
+                                  "type": "mrkdwn",
+                                  "text": "${slack_msg_body}"
+                          }
+                  }
+                ]
+}
+SLACK
+)
+
+    # send status message to slack
+    curl -X POST                             \
+        --data-urlencode "payload=$payload"  \
+        "$2"
+} 
