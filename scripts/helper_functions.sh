@@ -159,35 +159,37 @@ gcm_write_metric() {
     }"
 }
 
-# first parameter is slack channel name to send the status to
-# second parameter is slack webhook url
-# third parameter is message body
-# fourth parameter is message header for success
-# fifth parameter is message header for failure
-# sixth parameter is message header for canceled job
+# first parameter is slack webhook url, always required
+# second parameter is slack payload, optional
+# third parameter is slack channel name to send the status to, optional
+# fourth parameter is message body, optional
+# fifth parameter is message header for success, optional
+# sixth parameter is message header for failure, optional
+# seventh parameter is message header for canceled job, optional
 send_slack_status() {
     local message_header_canceled
     local message_header_failed
     local message_header_success
     local slack_msg_header
     local slack_msg_body
+    local payload
+
+   if [ -z "${7}" ]; then
+   message_header_canceled=":octagonal_sign: Pipeline for ${ENVIRONMENT} environment was canceled"
+   else
+   message_header_canceled=$7
+   fi
 
    if [ -z "${6}" ]; then
-   message_header_canceled=":white_check_mark: ${TARGET} for ${ENVIRONMENT} environment succeeded"
+   message_header_failed=":x: Pipeline for ${ENVIRONMENT} environment failed"
    else
-   message_header_canceled=$6
+   message_header_failed=$6
    fi
 
    if [ -z "${5}" ]; then
-   message_header_failed=":x: ${TARGET} for ${ENVIRONMENT} environment failed"
+   message_header_success=":white_check_mark: Pipeline for ${ENVIRONMENT} environment succeeded"
    else
-   message_header_failed=$5
-   fi
-
-   if [ -z "${4}" ]; then
-   message_header_success=":white_check_mark: ${TARGET} for ${ENVIRONMENT} environment succeeded"
-   else
-   message_header_success=$4
+   message_header_success=$5
    fi
 
     # canceled status is not currently (gitlab 13.7) handled in after_script phase, but support is planned in some future release, so this if should start working once the support is added
@@ -200,15 +202,18 @@ send_slack_status() {
     fi
 
     # Populate slack message body
-    if [ -z "${3}" ]; then
+    if [ -z "${4}" ]; then
     slack_msg_body="<${CI_JOB_URL}|Job URL> by ${GITLAB_USER_NAME} ${CI_COMMIT_TITLE}"
     else
-    slack_msg_body=$3
+    slack_msg_body=$4
     fi
 
+   if [ ! -z "${2}" ]; then
+	payload=$2
+   else
     payload=$(cat <<SLACK
             {
-                "channel": "$1",
+                "channel": "$3",
                 "blocks": [
                   {
                           "type": "section",
@@ -231,9 +236,10 @@ send_slack_status() {
 }
 SLACK
 )
+fi
 
     # send status message to slack
     curl -X POST                             \
         --data-urlencode "payload=$payload"  \
-        "$2"
-} 
+        "$1"
+}
